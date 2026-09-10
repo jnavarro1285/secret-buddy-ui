@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { createEvent, addParticipants, setReady } from "../service/api";
+import {
+  createEvent,
+  addParticipants,
+  setReady,
+  serializeParticipantPhones,
+  normalizeParticipantRestrictions,
+} from "../service/api";
 
 export default function Organizer() {
   const [name, setName] = useState("Amigo Secreto");
@@ -20,15 +26,45 @@ export default function Organizer() {
   }
 
   function parseCsv(text) {
-    // simple CSV: name,phone per line
     return text
       .split("\n")
-      .map((l) => l.trim())
+      .map((line) =>
+        line
+          .replace(/\u00a0/g, " ")
+          .replace(/\r/g, "")
+          .trim(),
+      )
       .filter(Boolean)
       .map((line) => {
-        const [n, p] = line.split(",").map((s) => s.trim());
-        return { name: n, phone: p };
-      });
+        const firstComma = line.indexOf(",");
+        if (firstComma < 0) return null;
+
+        const name = line.slice(0, firstComma).trim();
+        const rawRest = line.slice(firstComma + 1).trim();
+        const phone = serializeParticipantPhones(rawRest.split("[")[0].trim());
+
+        const groups = Array.from(line.matchAll(/\[([^\]]*)\]/g), (item) =>
+          item[1].replace(/^,/, "").trim(),
+        );
+
+        const permittedSource = groups[0] ? groups[0].trim() : "ALL";
+        const excludedSource = groups[1] ? groups[1].trim() : "";
+        const permitted =
+          permittedSource && permittedSource.toUpperCase() === "ALL"
+            ? "ALL"
+            : serializeParticipantPhones(permittedSource || "");
+        const excluded = serializeParticipantPhones(excludedSource);
+
+        const record = {
+          name,
+          phone,
+          permittedParticipants: permitted,
+          excludedParticipants: excluded,
+        };
+
+        return normalizeParticipantRestrictions(record);
+      })
+      .filter(Boolean);
   }
 
   async function onUpload() {
@@ -100,7 +136,15 @@ export default function Organizer() {
           Upload participants (CSV)
         </h2>
         <p className="text-sm text-gray-500">
-          Format: <code>Nombre,telefono</code> per line
+          Format: <code>Nombre,telefono[,ALL][,3131234567,3141234567]</code>
+          <br />
+          or: <code>Nombre,telefono[,3111234567,3121234567][,3131234567]</code>
+          per line
+        </p>
+        <p className="text-xs text-gray-500 mt-1">
+          Optional groups use square brackets. The first bracket group is the
+          permitted list and may contain <code>ALL</code> or phone numbers. The
+          second group is the excluded list.
         </p>
         <textarea
           className="w-full border rounded p-3 h-40 mt-2"
@@ -129,7 +173,10 @@ export default function Organizer() {
             <ul className="list-disc pl-5 mt-2">
               {participants.map((p) => (
                 <li key={p.id}>
-                  {p.name} — link: <a href={p.joinLink} className="text-blue-600 text-sm">{p.joinLink}</a>
+                  {p.name} — link:{" "}
+                  <a href={p.joinLink} className="text-blue-600 text-sm">
+                    {p.joinLink}
+                  </a>
                 </li>
               ))}
             </ul>
