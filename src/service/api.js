@@ -102,3 +102,8 @@ export async function reveal(eventId, token) {
   const res = await api.post(`/v1/join/${eventId}/${token}/reveal`);
   return res.data;
 }
+
+export async function updateAssignment(eventId, token) {
+  const res = await api.put(`/v1/join/${eventId}/${token}/reveal`);
+  return res.data;
+}

@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { getParticipants, reveal, getJoinContext } from "../service/api";
+import {
+  getParticipants,
+  reveal,
+  getJoinContext,
+  updateAssignment,
+} from "../service/api";
 
 export default function Participant() {
   const { eventId, token } = useParams();
@@ -47,7 +52,7 @@ export default function Participant() {
             // si el endpoint no existe o falla, usamos fallback
             console.warn(
               "Could not fetch participants list, falling back to demo names",
-              err
+              err,
             );
             return null;
           });
@@ -58,39 +63,32 @@ export default function Participant() {
       });
   }, [eventId, token]);
 
-  async function onSelect_() {
-    if (running || result) return;
-    setRunning(true);
-    // show roulette animation and then call backend; we'll run both in parallel but ensure UX shows animation
-    let finalNameFromBackend = null;
-    try {
-      const res = await reveal(eventId, token);
-      finalNameFromBackend = res.receiverName;
-    } catch (e) {
-      alert("Reveal failed: " + (e.response?.data?.detail || e.message));
-      setRunning(false);
-      return;
-    }
-
-    // show roulette for 2s then show final
-    setTimeout(() => {
-      setResult(finalNameFromBackend);
-      setAlreadyRevealed(true);
-      setRunning(false);
-    }, 2000);
-  }
-
   async function onSelect() {
     if (running || result) return;
     setRunning(true);
     setProgress(0); // Reinicia el progreso al inicio
-    const finalNameFromBackend = await reveal(eventId, token)
-      .then((res) => res.receiverName)
-      .catch((e) => {
-        alert("Reveal failed: " + (e.response?.data?.detail || e.message));
-        setRunning(false);
-        return null;
-      });
+
+    let finalNameFromBackend = null;
+
+    if (ctx && !ctx.alreadyRevealed && ctx.receiverName) {
+      finalNameFromBackend = ctx.receiverName;
+      updateAssignment(eventId, token)
+        .then((res) => {
+          console.log("Assignment updated successfully", res);
+        })
+        .catch((e) => {
+          alert("Reveal failed: " + (e.response?.data?.detail || e.message));
+          setRunning(false);
+        });
+    } else {
+      finalNameFromBackend = await reveal(eventId, token)
+        .then((res) => res.receiverName)
+        .catch((e) => {
+          alert("Reveal failed: " + (e.response?.data?.detail || e.message));
+          setRunning(false);
+          return null;
+        });
+    }
 
     if (!finalNameFromBackend) return;
 
